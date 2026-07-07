@@ -1,3 +1,4 @@
+import json
 import sys
 import tempfile
 import unittest
@@ -7,7 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from mmu_cli import vibecheck  # noqa: E402
-from mmu_cli.cli import command_vibecheck  # noqa: E402
+from mmu_cli.cli import command_vibecheck, command_vibecheck_sarif  # noqa: E402
 
 
 def write(root: Path, rel: str, content: str) -> None:
@@ -149,6 +150,68 @@ class CommandTests(unittest.TestCase):
             write(root, "src/lib.py", "def add(a, b): return a + b")
             result = command_vibecheck(root)
             self.assertEqual(result.exit_code, 0)
+
+
+class SarifTests(unittest.TestCase):
+    def test_sarif_structure_and_levels(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/db.py", 'q = f"SELECT * FROM users WHERE id = {uid}"')
+            findings = vibecheck.run_vibecheck(root)
+            sarif = vibecheck.to_sarif(findings, root)
+
+            self.assertEqual(sarif["version"], "2.1.0")
+            run = sarif["runs"][0]
+            self.assertEqual(run["tool"]["driver"]["name"], "mmu-vibecheck")
+            rule_ids = {r["id"] for r in run["tool"]["driver"]["rules"]}
+            self.assertIn("mmu/sql-fstring", rule_ids)
+
+            by_rule = {r["ruleId"]: r for r in run["results"]}
+            sql = by_rule["mmu/sql-fstring"]
+            self.assertEqual(sql["level"], "error")
+            uri = sql["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+            self.assertEqual(uri, "src/db.py")
+
+    def test_sarif_warn_maps_to_warning_level(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "package.json", '{"dependencies": {"express": "^4"}}')
+            write(root, "src/app.js", "const app = require('express')()")
+            findings = vibecheck.run_vibecheck(root)
+            sarif = vibecheck.to_sarif(findings, root)
+            by_rule = {r["ruleId"]: r for r in sarif["runs"][0]["results"]}
+            self.assertIn("mmu/rate-limiting", by_rule)
+            self.assertEqual(by_rule["mmu/rate-limiting"]["level"], "warning")
+
+    def test_sarif_fileless_finding_anchors_to_root_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "README.md", "# demo")
+            write(root, "package.json", '{"dependencies": {"express": "^4"}}')
+            findings = vibecheck.run_vibecheck(root)
+            sarif = vibecheck.to_sarif(findings, root)
+            by_rule = {r["ruleId"]: r for r in sarif["runs"][0]["results"]}
+            rate = by_rule["mmu/rate-limiting"]
+            uri = rate["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+            self.assertEqual(uri, "README.md")
+
+    def test_command_vibecheck_sarif_writes_file_and_exit_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/db.py", 'q = f"SELECT * FROM t WHERE id = {i}"')
+            out = root / "out.sarif"
+            code = command_vibecheck_sarif(root, str(out))
+            self.assertEqual(code, 2)
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(payload["version"], "2.1.0")
+
+    def test_command_vibecheck_sarif_clean_exit_zero(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/lib.py", "def add(a, b): return a + b")
+            out = root / "out.sarif"
+            code = command_vibecheck_sarif(root, str(out))
+            self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":

@@ -184,6 +184,54 @@ mmu vibecheck
 
 검사 항목: 하드코딩된 시크릿 · `.gitignore` 안 된 `.env` · 웹훅 서명 검증 + 멱등성 · 비밀번호 재설정 플로우 · f-string SQL · rate limiting · 와일드카드 CORS · `DEBUG = True` · 에러 모니터링. P0 발견 시 non-zero exit이므로 CI에 바로 연결됩니다.
 
+기계가 읽을 출력이 필요하면 `--json`, [GitHub 코드 스캐닝](https://docs.github.com/en/code-security/code-scanning) 연동은 `--sarif` — 발견 항목이 리포의 Security 탭과 PR 어노테이션에 표시됩니다:
+
+```bash
+mmu vibecheck --sarif -o vibecheck.sarif   # github/codeql-action/upload-sarif로 업로드
+```
+
+## CI에서 한 스텝으로 돌리기
+
+공식 GitHub Action이 모든 PR에서 `mmu vibecheck`를 실행합니다: 고정 PR 코멘트, 잡 서머리, SARIF 출력, 설정 가능한 pass/fail 게이트까지.
+
+```yaml
+# .github/workflows/vibecheck.yml
+name: Vibe Check
+on: pull_request
+permissions:
+  pull-requests: write     # 고정 PR 코멘트용
+jobs:
+  vibecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: minjikim89/make-me-unicorn@main
+        with:
+          fail-on: p0      # p0 | warn | never
+```
+
+푸시 전에 잡고 싶다면 pre-commit 훅:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/minjikim89/make-me-unicorn
+    rev: v0.8.0
+    hooks:
+      - id: mmu-vibecheck
+```
+
+## 내 프로젝트에 AGENTS.md 만들기
+
+[AGENTS.md](https://agents.md)는 Claude Code, OpenAI Codex, Cursor, Gemini CLI가 세션 시작 시 모두 읽는 오픈 표준입니다. 한 커맨드로 출시 컨텍스트(점수, 스테이지, 열린 게이트, 다음 액션, 에이전트가 쓸 MMU 커맨드)를 AGENTS.md에 써넣습니다:
+
+```bash
+mmu agents          # AGENTS.md 생성/갱신 (관리 블록만 갱신, 직접 쓴 내용은 보존)
+mmu agents --stdout # 파일에 쓰지 않고 미리보기
+```
+
+이제 모든 AI 코딩 세션이 뭘 만들었고, 뭐가 출시를 막고 있고, 다음에 뭘 해야 하는지 알고 시작합니다 — 프로젝트 설명을 반복할 필요가 없습니다.
+
 ## 이런 분들을 위해 만들었습니다
 
 | 당신이... | MMU가 도와주는 것 |

@@ -1004,6 +1004,29 @@ def render_badge_markdown(pct: int, stage_name: str, project_name: str = "") -> 
     return "\n".join(lines)
 
 
+def render_badge_endpoint(pct: int, stage_name: str) -> str:
+    """Generate shields.io *endpoint* JSON — the live-badge format.
+
+    Host the file anywhere public (gh-pages, raw.githubusercontent.com, a
+    gist) and point shields at it:
+    https://img.shields.io/endpoint?url=<raw-json-url>
+    Re-running `mmu badge --format endpoint -o badge.json` in CI keeps the
+    badge current without touching the README again.
+    """
+    import json as _json
+
+    return _json.dumps(
+        {
+            "schemaVersion": 1,
+            "label": "launch readiness",
+            "message": f"{pct}% {stage_name}",
+            "color": _badge_color(stage_name).lstrip("#"),
+            "style": "flat-square",
+        },
+        indent=2,
+    )
+
+
 def render_badge_html(pct: int, stage_name: str) -> str:
     """Generate an HTML snippet for embedding in web pages."""
     color = _badge_color(stage_name).replace("#", "")

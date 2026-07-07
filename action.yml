@@ -1,0 +1,202 @@
+name: 'Make Me Unicorn — Vibe Check'
+description: >-
+  Catch what AI-generated code misses — hardcoded secrets, unverified
+  webhooks, f-string SQL, missing password reset, wildcard CORS — right in
+  your pull request. Zero config: add one step, get a job summary, a PR
+  comment, and optional SARIF for GitHub code scanning.
+author: 'Make Me Unicorn'
+branding:
+  icon: 'shield'
+  color: 'purple'
+
+inputs:
+  path:
+    description: 'Project directory to scan (relative to the workspace).'
+    required: false
+    default: '.'
+  fail-on:
+    description: 'When to fail the step: "p0" (launch blockers), "warn" (blockers or warnings), or "never".'
+    required: false
+    default: 'p0'
+  comment:
+    description: 'Post/update a sticky PR comment with the findings (needs `pull-requests: write`).'
+    required: false
+    default: 'true'
+  sarif-file:
+    description: 'Where to write SARIF 2.1.0 output for code scanning. Empty string disables it. Upload with github/codeql-action/upload-sarif.'
+    required: false
+    default: 'mmu-vibecheck.sarif'
+  version:
+    description: 'make-me-unicorn pip version spec, e.g. "==0.8.0". Default: latest (requires >= 0.8.0 for SARIF).'
+    required: false
+    default: ''
+  python-version:
+    description: 'Python version used to run the scan.'
+    required: false
+    default: '3.12'
+
+outputs:
+  exit-code:
+    description: 'Raw `mmu vibecheck` exit code (0 = no launch blockers, 2 = P0 findings).'
+    value: ${{ steps.scan.outputs.exit-code }}
+  p0-count:
+    description: 'Number of launch-blocking (P0) findings.'
+    value: ${{ steps.report.outputs.p0-count }}
+  warn-count:
+    description: 'Number of warnings (P1).'
+    value: ${{ steps.report.outputs.warn-count }}
+  sarif-file:
+    description: 'Path of the generated SARIF file (empty if disabled).'
+    value: ${{ steps.scan.outputs.sarif-file }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install make-me-unicorn
+      shell: bash
+      run: python -m pip install --quiet "make-me-unicorn${{ inputs.version }}"
+
+    - name: Run vibe check
+      id: scan
+      shell: bash
+      working-directory: ${{ inputs.path }}
+      env:
+        SARIF_FILE: ${{ inputs.sarif-file }}
+      run: |
+        set +e
+        mmu vibecheck --json > "$RUNNER_TEMP/mmu-vibecheck.json"
+        code=$?
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        if [ -n "$SARIF_FILE" ]; then
+          # SARIF exits non-zero on P0 findings by design; the gate step
+          # decides pass/fail, so don't let generation kill the job here.
+          mmu vibecheck --sarif -o "$SARIF_FILE" || true
+          echo "sarif-file=$SARIF_FILE" >> "$GITHUB_OUTPUT"
+        else
+          echo "sarif-file=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Build report
+      id: report
+      shell: python
+      env:
+        FINDINGS_JSON: ${{ runner.temp }}/mmu-vibecheck.json
+        COMMENT_MD: ${{ runner.temp }}/mmu-vibecheck-comment.md
+      run: |
+        import json, os
+
+        with open(os.environ["FINDINGS_JSON"], encoding="utf-8") as f:
+            data = json.load(f)
+        findings = data.get("findings", [])
+        fails = [f for f in findings if f.get("status") == "fail"]
+        warns = [f for f in findings if f.get("status") == "warn"]
+
+        icons = {"fail": "❌", "warn": "⚠️", "ok": "✅", "skip": "⏭️"}
+        if fails:
+            headline = f"**{len(fails)} launch-blocking issue(s), {len(warns)} warning(s)**"
+        elif warns:
+            headline = f"**No launch blockers, {len(warns)} warning(s)**"
+        else:
+            headline = "**Clean — no blockers, no warnings** ✨"
+
+        lines = [
+            "<!-- mmu-vibecheck -->",
+            "## 🦄 Vibe Check — what AI-generated code usually misses",
+            "",
+            headline,
+            "",
+            "| | Severity | Check | Result |",
+            "|---|---|---|---|",
+        ]
+        for f in findings:
+            status = f.get("status", "")
+            lines.append(
+                f"| {icons.get(status, '')} | {f.get('severity', '')} "
+                f"| `{f.get('check', '')}` | {f.get('message', '')} |"
+            )
+        detail = [f for f in fails + warns if f.get("files") or f.get("hint")]
+        if detail:
+            lines += ["", "<details><summary>Details & fixes</summary>", ""]
+            for f in detail:
+                lines.append(f"**`{f['check']}`**")
+                for rel in (f.get("files") or [])[:5]:
+                    lines.append(f"- `{rel}`")
+                if f.get("hint"):
+                    lines.append(f"- 💡 {f['hint']}")
+                lines.append("")
+            lines.append("</details>")
+        lines += [
+            "",
+            "---",
+            "*by [Make Me Unicorn](https://github.com/minjikim89/make-me-unicorn) — "
+            "`pip install make-me-unicorn && mmu vibecheck`*",
+        ]
+        report = "\n".join(lines) + "\n"
+
+        with open(os.environ["COMMENT_MD"], "w", encoding="utf-8") as f:
+            f.write(report)
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as f:
+            f.write(report)
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as f:
+            f.write(f"p0-count={len(fails)}\n")
+            f.write(f"warn-count={len(warns)}\n")
+
+    - name: Post PR comment
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      uses: actions/github-script@v7
+      env:
+        COMMENT_MD: ${{ runner.temp }}/mmu-vibecheck-comment.md
+      with:
+        script: |
+          const fs = require('fs');
+          const body = fs.readFileSync(process.env.COMMENT_MD, 'utf8');
+          const marker = '<!-- mmu-vibecheck -->';
+          try {
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
+          } catch (error) {
+            core.warning(`Could not post PR comment (add \`pull-requests: write\` to the job permissions): ${error.message}`);
+          }
+
+    - name: Gate on findings
+      shell: bash
+      env:
+        FAIL_ON: ${{ inputs.fail-on }}
+        P0: ${{ steps.report.outputs.p0-count }}
+        WARN: ${{ steps.report.outputs.warn-count }}
+      run: |
+        case "$FAIL_ON" in
+          never) exit 0 ;;
+          warn) total=$((P0 + WARN)) ;;
+          *) total=$P0 ;;
+        esac
+        if [ "$total" -gt 0 ]; then
+          echo "::error::mmu vibecheck: $P0 launch-blocking issue(s), $WARN warning(s) (fail-on=$FAIL_ON)"
+          exit 1
+        fi

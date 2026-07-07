@@ -62,11 +62,15 @@
 - Deferred: blueprint slug collision protection in `mmu_get_blueprint` (slugs are currently unique; revisit when blueprints are user-extensible)
 - Deferred: `--llm` synthesize path test coverage
 
-## v0.8 Distribution Push
+## v0.8 Distribution Push (in progress)
 
+- ✅ **GitHub Action** — `uses: minjikim89/make-me-unicorn@v1` runs `mmu vibecheck` on every PR: sticky PR comment, job summary, SARIF output, configurable `fail-on` gate (`action.yml`, composite)
+- ✅ **SARIF output** — `mmu vibecheck --sarif` emits SARIF 2.1.0 for GitHub code scanning (findings in the Security tab + PR annotations)
+- ✅ **`mmu agents`** — generates/refreshes AGENTS.md (the agents.md open standard read by Claude Code, OpenAI Codex, Cursor, Gemini CLI) with live launch context: score, stage, gates, top next actions; managed block preserves user edits
+- ✅ **pre-commit hooks** — `.pre-commit-hooks.yaml` ships `mmu-vibecheck` and `mmu-doctor` hook ids
+- ✅ **Live badge endpoint** — `mmu badge --format endpoint` emits shields.io endpoint JSON; regenerate in CI and the README badge self-updates
 - Submit to MCP registries (official registry, mcp.so, smithery.ai, glama.ai) and awesome lists (awesome-mcp-servers, awesome-claude-skills)
-- Live badge endpoint so `mmu badge` self-updates (shields.io endpoint JSON)
-- GitHub Action: `mmu vibecheck` + score delta comment on PRs, Marketplace listing
+- GitHub Marketplace listing for the Action
 - Showcase gallery of projects using the badge
 - 60-second demo video (idea → validate → vibecheck → launch gates)
 

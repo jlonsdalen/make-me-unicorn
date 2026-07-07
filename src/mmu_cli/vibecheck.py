@@ -308,6 +308,90 @@ def run_vibecheck(root: Path) -> list[Finding]:
     return findings
 
 
+_TOOL_URI = "https://github.com/minjikim89/make-me-unicorn"
+
+# GitHub code scanning ignores results without a physical location, so
+# findings that describe the whole project (e.g. "no rate limiting markers")
+# are anchored to the first of these files that exists in the scanned root.
+_ANCHOR_CANDIDATES = ("README.md", "pyproject.toml", "package.json", "readme.md")
+
+
+def _tool_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("make-me-unicorn")
+    except Exception:
+        return "0.0.0"
+
+
+def _sarif_anchor(root: Path) -> str | None:
+    for name in _ANCHOR_CANDIDATES:
+        if (root / name).is_file():
+            return name
+    return None
+
+
+def to_sarif(findings: list[Finding], root: Path) -> dict:
+    """Render findings as a SARIF 2.1.0 log for GitHub code scanning.
+
+    Only actionable findings (fail/warn) become results; ok/skip checks are
+    still listed as rules so the tool's coverage is visible in the log.
+    """
+    anchor = _sarif_anchor(root)
+    rules = []
+    results = []
+    for f in findings:
+        rule: dict = {
+            "id": f"mmu/{f.check}",
+            "name": f.check.replace("-", " ").title().replace(" ", ""),
+            "shortDescription": {"text": f"{f.check} ({f.severity})"},
+        }
+        if f.hint:
+            rule["help"] = {"text": f.hint}
+        rules.append(rule)
+
+        if f.status not in {"fail", "warn"}:
+            continue
+        message = f.message if not f.hint else f"{f.message}. {f.hint}"
+        uris = f.files or ([anchor] if anchor else [])
+        locations = [
+            {
+                "physicalLocation": {
+                    "artifactLocation": {"uri": uri, "uriBaseId": "%SRCROOT%"},
+                    "region": {"startLine": 1, "startColumn": 1},
+                }
+            }
+            for uri in uris
+        ]
+        result: dict = {
+            "ruleId": f"mmu/{f.check}",
+            "level": "error" if f.status == "fail" else "warning",
+            "message": {"text": message},
+        }
+        if locations:
+            result["locations"] = locations
+        results.append(result)
+
+    return {
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "mmu-vibecheck",
+                        "informationUri": _TOOL_URI,
+                        "version": _tool_version(),
+                        "rules": rules,
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }
+
+
 def format_findings(findings: list[Finding]) -> tuple[list[str], int]:
     """Render findings as message lines; return (lines, exit_code)."""
     icons = {"fail": "[fail]", "warn": "[warn]", "ok": "[ok]", "skip": "[skip]"}

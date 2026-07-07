@@ -254,6 +254,8 @@ def parse_args() -> argparse.Namespace:
         help="Scan for the security/UX gaps AI-generated code ships most (secrets, webhooks, rate limits, ...)",
     )
     p_vibecheck.add_argument("--json", action="store_true", help="Output structured JSON")
+    p_vibecheck.add_argument("--sarif", action="store_true", help="Output SARIF 2.1.0 for GitHub code scanning")
+    p_vibecheck.add_argument("--output", "-o", help="Write --sarif/--json output to a file instead of stdout")
     p_vibecheck.add_argument("--root", default=".", help="Project root path")
 
     p_gate = sub.add_parser("gate", help="Check stage gate readiness")
@@ -312,9 +314,17 @@ def parse_args() -> argparse.Namespace:
     p_badge = sub.add_parser("badge", help="Generate README badge (SVG/Markdown/HTML)")
     p_badge.add_argument("--json", action="store_true", help="Output structured JSON")
     p_badge.add_argument("--root", default=".", help="Project root path")
-    p_badge.add_argument("--format", dest="badge_format", choices=["markdown", "svg", "html"], default="markdown", help="Badge format (default: markdown)")
+    p_badge.add_argument("--format", dest="badge_format", choices=["markdown", "svg", "html", "endpoint"], default="markdown", help="Badge format (default: markdown; endpoint = shields.io live-badge JSON)")
     p_badge.add_argument("--output", "-o", help="Write badge to file instead of stdout")
     p_badge.add_argument("--clipboard", action="store_true", help="Copy to clipboard (macOS)")
+
+    p_agents = sub.add_parser(
+        "agents",
+        help="Generate or refresh AGENTS.md so any coding agent (Claude Code, Codex, Cursor, Gemini CLI) opens with your launch context",
+    )
+    p_agents.add_argument("--json", action="store_true", help="Output structured JSON")
+    p_agents.add_argument("--root", default=".", help="Project root path")
+    p_agents.add_argument("--stdout", action="store_true", help="Print the managed block instead of writing AGENTS.md")
 
     p_mcp = sub.add_parser("serve-mcp", help="Run MMU as an MCP server (requires [mcp] extra)")
     p_mcp.add_argument("--root", default=None, help="Path to make-me-unicorn repo (defaults to package install location)")
@@ -1223,6 +1233,41 @@ def command_vibecheck(root: Path) -> Result:
     )
 
 
+def command_vibecheck_sarif(root: Path, output: str | None = None) -> int:
+    """Emit vibecheck findings as SARIF. Exit code matches `mmu vibecheck`
+    (P0 findings → 2) so CI gates stay consistent; pipe with `|| true` when
+    the SARIF upload itself should be the gate."""
+    from mmu_cli.vibecheck import run_vibecheck, to_sarif
+
+    findings = run_vibecheck(root)
+    payload = json.dumps(to_sarif(findings, root), ensure_ascii=False, indent=2)
+    if output:
+        write_text(Path(output), payload + "\n")
+        print(f"SARIF written to {output}", file=sys.stderr)
+    else:
+        print(payload)
+    return 2 if any(f.status == "fail" for f in findings) else 0
+
+
+def command_agents(root: Path, stdout: bool = False) -> Result:
+    from mmu_cli.agents_md import render_block, write_agents_md
+
+    if stdout:
+        return Result(exit_code=0, messages=[render_block(root)])
+    path, created = write_agents_md(root)
+    verb = "created" if created else "updated"
+    return Result(
+        exit_code=0,
+        path=str(path),
+        created=created,
+        messages=[
+            f"AGENTS.md {verb}: {path}",
+            "Every AGENTS.md-aware agent (Claude Code, Codex, Cursor, Gemini CLI) now opens with your launch context.",
+            "Re-run `mmu agents` after checklist changes to refresh the managed block.",
+        ],
+    )
+
+
 def command_gate(stage: str, root: Path) -> Result:
     stage = stage.upper().strip()
     if not re.fullmatch(r"M\d+", stage):
@@ -1290,6 +1335,7 @@ def command_badge(
 ) -> Result:
     """Generate a badge for README / web embedding."""
     from mmu_cli.display import (
+        render_badge_endpoint,
         render_badge_html,
         render_badge_markdown,
         render_badge_svg,
@@ -1320,6 +1366,8 @@ def command_badge(
         content = render_badge_svg(pct, stage_name)
     elif fmt == "html":
         content = render_badge_html(pct, stage_name)
+    elif fmt == "endpoint":
+        content = render_badge_endpoint(pct, stage_name)
     else:
         content = render_badge_markdown(pct, stage_name, project_name)
 
@@ -1765,7 +1813,14 @@ def main() -> int:
         result = command_generate(args.doc, root)
         return render_result(result, args.json)
     if args.command == "vibecheck":
+        if getattr(args, "sarif", False):
+            return command_vibecheck_sarif(root, getattr(args, "output", None))
         result = command_vibecheck(root)
+        if getattr(args, "output", None) and args.json:
+            clean = {k: v for k, v in result.items() if k != "dashboard"}
+            write_text(Path(args.output), json.dumps(clean, ensure_ascii=False, indent=2) + "\n")
+            print(f"JSON written to {args.output}", file=sys.stderr)
+            return result.exit_code
         return render_result(result, args.json)
     if args.command == "gate":
         result = command_gate(args.stage, root)
@@ -1798,6 +1853,9 @@ def main() -> int:
             output=getattr(args, "output", None),
             clipboard=getattr(args, "clipboard", False),
         )
+        return render_result(result, args.json)
+    if args.command == "agents":
+        result = command_agents(root, stdout=getattr(args, "stdout", False))
         return render_result(result, args.json)
     if args.command == "snapshot":
         result = command_snapshot(root, args.target, args.output, args.no_md)

@@ -731,6 +731,27 @@ class BadgeTest(unittest.TestCase):
         content = Path(out_path).read_text()
         self.assertIn("img.shields.io", content)
 
+    def test_badge_endpoint_is_valid_shields_schema(self):
+        """Endpoint badge should be valid shields.io endpoint JSON."""
+        import json as json_mod
+
+        from mmu_cli.display import render_badge_endpoint
+        payload = json_mod.loads(render_badge_endpoint(68, "young unicorn"))
+        self.assertEqual(payload["schemaVersion"], 1)
+        self.assertEqual(payload["label"], "launch readiness")
+        self.assertEqual(payload["message"], "68% young unicorn")
+        self.assertEqual(payload["color"], "9c27b0")
+
+    def test_command_badge_endpoint(self):
+        """command_badge with endpoint format should return endpoint JSON."""
+        import json as json_mod
+
+        from mmu_cli.cli import command_badge
+        result = command_badge(self.root, fmt="endpoint")
+        self.assertEqual(result.exit_code, 0)
+        payload = json_mod.loads(result["messages"][0])
+        self.assertEqual(payload["schemaVersion"], 1)
+
     def test_badge_stage_colors(self):
         """Each stage should map to a specific color."""
         from mmu_cli.display import STAGE_COLORS

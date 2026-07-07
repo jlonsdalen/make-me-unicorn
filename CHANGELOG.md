@@ -6,6 +6,17 @@ The format is inspired by Keep a Changelog and follows semantic intent.
 
 ## [Unreleased]
 
+### Added
+
+- **GitHub Action** (`action.yml`) — add `uses: minjikim89/make-me-unicorn@v1` to any workflow and every PR gets a vibe check: sticky PR comment with findings + fixes, job summary, SARIF file for code scanning, and a configurable `fail-on: p0 | warn | never` gate. Outputs `p0-count`, `warn-count`, `exit-code`, `sarif-file` for downstream steps.
+- **`mmu vibecheck --sarif`** — SARIF 2.1.0 output for GitHub code scanning: P0 findings map to `error`, P1 to `warning`, with per-file locations (project-wide findings anchor to README/pyproject/package.json so GitHub displays them). New `-o/--output` writes SARIF or `--json` output to a file.
+- **`mmu agents`** — generate or refresh `AGENTS.md`, the open agent-instructions standard (agents.md) read by Claude Code, OpenAI Codex, Cursor, and Gemini CLI. Writes a managed block with live launch context — score, stage, gates, top 5 next actions, and the MMU commands agents should use — while preserving everything outside the markers. `--stdout` previews without writing.
+- **pre-commit hooks** — `.pre-commit-hooks.yaml` with `mmu-vibecheck` (block commits that ship P0 blind spots) and `mmu-doctor` hook ids.
+- **`mmu badge --format endpoint`** — shields.io endpoint JSON for a live, self-updating README badge; regenerate the file in CI and the badge follows your score.
+- `AGENTS.md` for this repository itself (dogfooding the standard) with the exact CI commands and codebase conventions.
+- 12 new unit tests (SARIF structure/levels/anchoring, AGENTS.md merge semantics, endpoint badge schema) — 138 total.
+- README (en/ko): "Run It in Your CI", "AGENTS.md for Your Project", SARIF, pre-commit, and live-badge sections. (ja/zh-CN/es translations still need a sync pass.)
+
 ## [0.7.0] - 2026-06-10
 
 ### Added

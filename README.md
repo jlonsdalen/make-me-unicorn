@@ -61,6 +61,13 @@ mmu badge --format svg -o badge.svg  # save as SVG file
 mmu badge --clipboard              # copy to clipboard
 ```
 
+Want a badge that updates itself? Generate a [shields.io endpoint](https://shields.io/badges/endpoint-badge) file and regenerate it in CI:
+
+```bash
+mmu badge --format endpoint -o badge.json   # commit/host it, then embed:
+# https://img.shields.io/endpoint?url=<raw-url-to-badge.json>
+```
+
 Then paste in your README:
 
 [![Launch Readiness 68% — Young Unicorn](https://img.shields.io/badge/launch%20readiness-68%25%20young%20unicorn-9c27b0?style=flat-square)](https://github.com/minjikim89/make-me-unicorn)
@@ -184,6 +191,54 @@ Vibe check result: 3 launch-blocking issue(s), 1 warning(s)
 ```
 
 Checks: hardcoded secrets · unignored `.env` · webhook signature + idempotency · password reset flow · f-string SQL · rate limiting · wildcard CORS · `DEBUG = True` · error monitoring. P0 findings exit non-zero, so it drops straight into CI.
+
+Need machine-readable output? `--json` for scripts, `--sarif` for [GitHub code scanning](https://docs.github.com/en/code-security/code-scanning) — findings show up in your repo's Security tab and as PR annotations:
+
+```bash
+mmu vibecheck --sarif -o vibecheck.sarif   # upload with github/codeql-action/upload-sarif
+```
+
+## Run It in Your CI — One Step
+
+The official GitHub Action runs `mmu vibecheck` on every PR: sticky PR comment, job summary, SARIF output, and a configurable pass/fail gate.
+
+```yaml
+# .github/workflows/vibecheck.yml
+name: Vibe Check
+on: pull_request
+permissions:
+  pull-requests: write     # for the sticky PR comment
+jobs:
+  vibecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: minjikim89/make-me-unicorn@main
+        with:
+          fail-on: p0      # p0 | warn | never
+```
+
+Prefer catching it before the push? Add the pre-commit hook:
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/minjikim89/make-me-unicorn
+    rev: v0.8.0
+    hooks:
+      - id: mmu-vibecheck
+```
+
+## AGENTS.md for Your Project
+
+[AGENTS.md](https://agents.md) is the open standard Claude Code, OpenAI Codex, Cursor, and Gemini CLI all read on session start. One command writes your launch context into it — score, stage, open gates, top next actions, and the MMU commands agents should use:
+
+```bash
+mmu agents          # create or refresh AGENTS.md (managed block, your edits preserved)
+mmu agents --stdout # preview without writing
+```
+
+Every AI coding session now starts knowing what's shipped, what's blocking launch, and what to do next — no re-explaining your project.
 
 ## Personalize Your Checklist
 
@@ -324,8 +379,10 @@ mmu gate --stage M0           # verify gate readiness
 mmu doctor                    # guardrail health checks
 mmu doctor --deep             # LLM-powered semantic review
 mmu vibecheck                 # scan for AI-generated code blind spots (secrets, webhooks, …)
+mmu vibecheck --sarif -o f.sarif  # SARIF for GitHub code scanning
+mmu agents                    # generate/refresh AGENTS.md with your launch context
 mmu share                     # shareable score card
-mmu badge                     # README badge (markdown/svg/html)
+mmu badge                     # README badge (markdown/svg/html/endpoint)
 mmu start --mode backend      # start focused session
 mmu close                     # end session with structured memory
 ```

@@ -1,0 +1,30 @@
+# Make Me Unicorn pre-commit hooks.
+#
+# Usage in your project's .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/minjikim89/make-me-unicorn
+#       rev: v0.8.0
+#       hooks:
+#         - id: mmu-vibecheck
+#
+- id: mmu-vibecheck
+  name: mmu vibecheck — AI-code blind spot scan
+  description: >
+    Blocks commits that ship the gaps AI-generated code misses most:
+    hardcoded secrets, unverified webhooks, f-string SQL, missing password
+    reset, wildcard CORS, DEBUG=True. P0 findings fail the hook.
+  entry: mmu vibecheck --root .
+  language: python
+  pass_filenames: false
+  always_run: true
+
+- id: mmu-doctor
+  name: mmu doctor — MMU guardrail checks
+  description: >
+    Runs Make Me Unicorn's doctor checks (metadata, webhook safety, env
+    split) before each commit. For projects initialized with `mmu init`.
+  entry: mmu doctor --root .
+  language: python
+  pass_filenames: false
+  always_run: true
