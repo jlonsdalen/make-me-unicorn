@@ -62,11 +62,13 @@
 - Deferred: blueprint slug collision protection in `mmu_get_blueprint` (slugs are currently unique; revisit when blueprints are user-extensible)
 - Deferred: `--llm` synthesize path test coverage
 
-## v0.8 Distribution Push
+## v0.8 Distribution Push (in progress)
 
+- ✅ Reusable GitHub Action (`action.yml`) — `uses: minjikim89/make-me-unicorn@main` runs `mmu vibecheck` in any workflow
+- ✅ Copy-paste distribution kit (`docs/launch/distribution-kit.md`) — HN, Reddit, GeekNews, X posts + awesome-list/registry snippets
 - Submit to MCP registries (official registry, mcp.so, smithery.ai, glama.ai) and awesome lists (awesome-mcp-servers, awesome-claude-skills)
 - Live badge endpoint so `mmu badge` self-updates (shields.io endpoint JSON)
-- GitHub Action: `mmu vibecheck` + score delta comment on PRs, Marketplace listing
+- GitHub Action follow-ups: score delta comment on PRs, Marketplace listing
 - Showcase gallery of projects using the badge
 - 60-second demo video (idea → validate → vibecheck → launch gates)
 
