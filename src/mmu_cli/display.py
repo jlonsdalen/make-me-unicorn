@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html as html_mod
+import json
 import os
 import re
 import sys
@@ -1014,6 +1015,21 @@ def render_badge_html(pct: int, stage_name: str) -> str:
         f'<img src="https://img.shields.io/badge/launch%20readiness-{value}-{color}?style=flat-square" '
         f'alt="{alt}" /></a>'
     )
+
+
+def render_badge_endpoint(pct: int, stage_name: str) -> str:
+    """Generate shields.io endpoint JSON for a self-updating badge.
+
+    Publish the file at a raw URL (repo, gist, or Pages), then embed:
+    https://img.shields.io/endpoint?url=<raw-url-to-badge.json>
+    """
+    payload = {
+        "schemaVersion": 1,
+        "label": "launch readiness",
+        "message": f"{pct}% {stage_name}",
+        "color": _badge_color(stage_name).lstrip("#"),
+    }
+    return json.dumps(payload, indent=2) + "\n"
 
 
 def colorize_message(msg: str) -> str:

@@ -312,7 +312,13 @@ def parse_args() -> argparse.Namespace:
     p_badge = sub.add_parser("badge", help="Generate README badge (SVG/Markdown/HTML)")
     p_badge.add_argument("--json", action="store_true", help="Output structured JSON")
     p_badge.add_argument("--root", default=".", help="Project root path")
-    p_badge.add_argument("--format", dest="badge_format", choices=["markdown", "svg", "html"], default="markdown", help="Badge format (default: markdown)")
+    p_badge.add_argument(
+        "--format",
+        dest="badge_format",
+        choices=["markdown", "svg", "html", "endpoint"],
+        default="markdown",
+        help="Badge format (default: markdown). 'endpoint' emits shields.io endpoint JSON for a self-updating badge",
+    )
     p_badge.add_argument("--output", "-o", help="Write badge to file instead of stdout")
     p_badge.add_argument("--clipboard", action="store_true", help="Copy to clipboard (macOS)")
 
@@ -1290,6 +1296,7 @@ def command_badge(
 ) -> Result:
     """Generate a badge for README / web embedding."""
     from mmu_cli.display import (
+        render_badge_endpoint,
         render_badge_html,
         render_badge_markdown,
         render_badge_svg,
@@ -1320,6 +1327,8 @@ def command_badge(
         content = render_badge_svg(pct, stage_name)
     elif fmt == "html":
         content = render_badge_html(pct, stage_name)
+    elif fmt == "endpoint":
+        content = render_badge_endpoint(pct, stage_name)
     else:
         content = render_badge_markdown(pct, stage_name, project_name)
 
@@ -1330,6 +1339,13 @@ def command_badge(
         messages.append(f"Badge written to {output}")
     else:
         messages.append(content)
+
+    if fmt == "endpoint":
+        messages.append(
+            "Publish this JSON at a raw URL (repo, gist, or Pages), then embed:\n"
+            "https://img.shields.io/endpoint?url=<raw-url-to-badge.json>\n"
+            "The badge updates whenever the published JSON does — regenerate it in CI to keep it live."
+        )
 
     if clipboard:
         ok, msg = try_copy_clipboard(content)

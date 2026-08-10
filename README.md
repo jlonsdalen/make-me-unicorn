@@ -58,8 +58,11 @@ Show your launch readiness to the world. One command:
 ```bash
 mmu badge                          # get markdown badge
 mmu badge --format svg -o badge.svg  # save as SVG file
+mmu badge --format endpoint -o badge.json  # self-updating badge (shields.io endpoint)
 mmu badge --clipboard              # copy to clipboard
 ```
+
+For a badge that stays live, publish `badge.json` at a raw URL (commit it, or push it to Pages) and embed `https://img.shields.io/endpoint?url=<raw-url>` — regenerate the JSON in CI and the badge updates itself.
 
 Then paste in your README:
 

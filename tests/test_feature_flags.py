@@ -721,6 +721,27 @@ class BadgeTest(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertIn("<svg", result["messages"][0])
 
+    def test_badge_endpoint_schema(self):
+        """Endpoint badge should be valid shields.io endpoint JSON."""
+        import json
+        from mmu_cli.display import render_badge_endpoint
+        payload = json.loads(render_badge_endpoint(68, "young unicorn"))
+        self.assertEqual(payload["schemaVersion"], 1)
+        self.assertEqual(payload["label"], "launch readiness")
+        self.assertIn("68%", payload["message"])
+        self.assertIn("young unicorn", payload["message"])
+        self.assertNotIn("#", payload["color"])
+
+    def test_command_badge_endpoint(self):
+        """command_badge with endpoint format should emit JSON plus embed hint."""
+        import json
+        from mmu_cli.cli import command_badge
+        result = command_badge(self.root, fmt="endpoint")
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result["messages"][0])
+        self.assertEqual(payload["schemaVersion"], 1)
+        self.assertTrue(any("img.shields.io/endpoint" in m for m in result["messages"]))
+
     def test_command_badge_output_file(self):
         """command_badge with --output should write file."""
         from mmu_cli.cli import command_badge
