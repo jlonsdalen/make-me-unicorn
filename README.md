@@ -58,8 +58,11 @@ Show your launch readiness to the world. One command:
 ```bash
 mmu badge                          # get markdown badge
 mmu badge --format svg -o badge.svg  # save as SVG file
+mmu badge --format endpoint -o badge.json  # self-updating badge (shields.io endpoint)
 mmu badge --clipboard              # copy to clipboard
 ```
+
+For a badge that stays live, publish `badge.json` at a raw URL (commit it, or push it to Pages) and embed `https://img.shields.io/endpoint?url=<raw-url>` — regenerate the JSON in CI and the badge updates itself.
 
 Then paste in your README:
 
@@ -184,6 +187,18 @@ Vibe check result: 3 launch-blocking issue(s), 1 warning(s)
 ```
 
 Checks: hardcoded secrets · unignored `.env` · webhook signature + idempotency · password reset flow · f-string SQL · rate limiting · wildcard CORS · `DEBUG = True` · error monitoring. P0 findings exit non-zero, so it drops straight into CI.
+
+### Run It in GitHub Actions
+
+One step in any workflow — launch-blocking findings fail the build:
+
+```yaml
+- uses: minjikim89/make-me-unicorn@main
+  # optional:
+  # with:
+  #   root: "apps/web"        # subfolder to scan
+  #   version: "==0.7.0"      # pin a release
+```
 
 ## Personalize Your Checklist
 
@@ -365,7 +380,13 @@ examples/filled/tasknote/
 
 ## Contributing
 
-See `CONTRIBUTING.md`.
+See `CONTRIBUTING.md`. Issues labeled [`good first issue`](https://github.com/minjikim89/make-me-unicorn/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) are scoped for a first PR — each one links the exact files to touch.
+
+## Support the Project
+
+If MMU caught something you would have missed, **[a star](https://github.com/minjikim89/make-me-unicorn/stargazers) helps other solo builders find it** — that's the whole growth model of this project.
+
+[![Star History Chart](https://api.star-history.com/svg?repos=minjikim89/make-me-unicorn&type=Date)](https://star-history.com/#minjikim89/make-me-unicorn&Date)
 
 ## License
 

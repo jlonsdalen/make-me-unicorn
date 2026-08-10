@@ -184,6 +184,18 @@ mmu vibecheck
 
 검사 항목: 하드코딩된 시크릿 · `.gitignore` 안 된 `.env` · 웹훅 서명 검증 + 멱등성 · 비밀번호 재설정 플로우 · f-string SQL · rate limiting · 와일드카드 CORS · `DEBUG = True` · 에러 모니터링. P0 발견 시 non-zero exit이므로 CI에 바로 연결됩니다.
 
+### GitHub Actions에서 실행하기
+
+어떤 워크플로우에든 한 스텝이면 됩니다 — 출시를 막는(P0) 발견이 있으면 빌드가 실패합니다:
+
+```yaml
+- uses: minjikim89/make-me-unicorn@main
+  # 선택:
+  # with:
+  #   root: "apps/web"        # 스캔할 하위 폴더
+  #   version: "==0.7.0"      # 릴리스 버전 고정
+```
+
 ## 이런 분들을 위해 만들었습니다
 
 | 당신이... | MMU가 도와주는 것 |
@@ -429,7 +441,13 @@ make-me-unicorn/
 
 ## 기여하기
 
-`CONTRIBUTING.md`를 참고하세요.
+`CONTRIBUTING.md`를 참고하세요. [`good first issue`](https://github.com/minjikim89/make-me-unicorn/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) 라벨이 붙은 이슈는 첫 PR용으로 범위를 잡아뒀습니다 — 수정할 파일까지 이슈에 명시되어 있습니다.
+
+## 프로젝트 응원하기
+
+MMU가 놓칠 뻔한 걸 잡아줬다면, **[스타 하나](https://github.com/minjikim89/make-me-unicorn/stargazers)가 다른 솔로 빌더들이 이 프로젝트를 발견하는 데 큰 도움이 됩니다.**
+
+[![Star History Chart](https://api.star-history.com/svg?repos=minjikim89/make-me-unicorn&type=Date)](https://star-history.com/#minjikim89/make-me-unicorn&Date)
 
 ## 라이선스
 
