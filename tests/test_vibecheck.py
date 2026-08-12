@@ -94,6 +94,22 @@ class UnsafeDeserializationTests(unittest.TestCase):
             self.assertIn("pickle.loads", finding.message)
             self.assertEqual(finding.files, ["src/cache.py"])
 
+    def test_flags_aliased_pickle_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/cache.py", "from pickle import loads as decode\nvalue = decode(payload)\n")
+            finding = vibecheck.check_unsafe_deserialization(root, [root / "src/cache.py"])
+            self.assertEqual(finding.status, "fail")
+            self.assertIn("pickle.loads", finding.message)
+
+    def test_flags_pickle_module_alias_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/cache.py", "import pickle as p\nvalue = p.loads(payload)\n")
+            finding = vibecheck.check_unsafe_deserialization(root, [root / "src/cache.py"])
+            self.assertEqual(finding.status, "fail")
+            self.assertIn("pickle.loads", finding.message)
+
     def test_flags_yaml_load_without_safe_loader(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -106,6 +122,13 @@ class UnsafeDeserializationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write(root, "src/config.py", "import yaml\nconfig = yaml.safe_load(raw_config)\n")
+            finding = vibecheck.check_unsafe_deserialization(root, [root / "src/config.py"])
+            self.assertEqual(finding.status, "ok")
+
+    def test_ok_for_yaml_load_with_safe_loader_after_nested_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/config.py", "import yaml\nconfig = yaml.load(stream.read(), Loader=yaml.SafeLoader)\n")
             finding = vibecheck.check_unsafe_deserialization(root, [root / "src/config.py"])
             self.assertEqual(finding.status, "ok")
 
