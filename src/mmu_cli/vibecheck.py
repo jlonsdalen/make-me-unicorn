@@ -57,6 +57,12 @@ _RESET_MARKERS = ["password reset", "reset password", "forgot password", "resetp
 
 _SQL_FSTRING = re.compile(r"""f["']\s*(?:SELECT|INSERT|UPDATE|DELETE)\b""", re.IGNORECASE)
 
+_UNSAFE_DESERIALIZATION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("pickle.loads", re.compile(r"\bpickle\.loads\s*\(")),
+    ("pickle.load", re.compile(r"\bpickle\.load\s*\(")),
+    ("yaml.load without SafeLoader", re.compile(r"\byaml\.load\s*\((?![^)]*(?:SafeLoader|safe_load))", re.DOTALL)),
+]
+
 _SERVER_HINTS = [
     "express", "fastapi", "flask", "django", "koa", "hono", "nestjs",
     "next.config", "rails", "sinatra", "gin-gonic", "fiber",
@@ -253,6 +259,30 @@ def check_sql_strings(root: Path, code_files: list[Path]) -> Finding:
     return Finding("sql-fstring", "P0", "ok", "no f-string SQL queries detected")
 
 
+def check_unsafe_deserialization(root: Path, code_files: list[Path]) -> Finding:
+    offenders: list[str] = []
+    details: list[str] = []
+    for path in code_files:
+        if path.suffix.lower() != ".py":
+            continue
+        text = _read(path)
+        for label, pattern in _UNSAFE_DESERIALIZATION_PATTERNS:
+            if pattern.search(text):
+                offenders.append(_rel(path, root))
+                details.append(label)
+                break
+    if offenders:
+        return Finding(
+            "unsafe-deserialization",
+            "P0",
+            "fail",
+            f"unsafe deserialization in {len(offenders)} file(s): " + ", ".join(sorted(set(details))),
+            hint="Do not deserialize untrusted input with pickle or unsafe YAML loaders. Prefer JSON or yaml.safe_load.",
+            files=sorted(set(offenders)),
+        )
+    return Finding("unsafe-deserialization", "P0", "ok", "no unsafe Python deserialization detected")
+
+
 def check_debug_mode(root: Path, code_files: list[Path]) -> Finding:
     pattern = re.compile(r"^\s*DEBUG\s*=\s*True\b", re.MULTILINE)
     offenders = []
@@ -301,6 +331,7 @@ def run_vibecheck(root: Path) -> list[Finding]:
     findings.extend(check_webhooks(root, code_files))
     findings.append(check_password_reset(root, code_files))
     findings.append(check_sql_strings(root, code_files))
+    findings.append(check_unsafe_deserialization(root, code_files))
     findings.append(check_rate_limiting(root, code_files))
     findings.append(check_cors(root, code_files))
     findings.append(check_debug_mode(root, code_files))
