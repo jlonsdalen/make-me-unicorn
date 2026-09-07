@@ -84,6 +84,55 @@ class SqlFstringTests(unittest.TestCase):
             self.assertEqual(finding.status, "ok")
 
 
+class UnsafeDeserializationTests(unittest.TestCase):
+    def test_flags_pickle_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/cache.py", "import pickle\nvalue = pickle.loads(payload)\n")
+            finding = vibecheck.check_unsafe_deserialization(root, [root / "src/cache.py"])
+            self.assertEqual(finding.status, "fail")
+            self.assertIn("pickle.loads", finding.message)
+            self.assertEqual(finding.files, ["src/cache.py"])
+
+    def test_flags_aliased_pickle_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/cache.py", "from pickle import loads as decode\nvalue = decode(payload)\n")
+            finding = vibecheck.check_unsafe_deserialization(root, [root / "src/cache.py"])
+            self.assertEqual(finding.status, "fail")
+            self.assertIn("pickle.loads", finding.message)
+
+    def test_flags_pickle_module_alias_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/cache.py", "import pickle as p\nvalue = p.loads(payload)\n")
+            finding = vibecheck.check_unsafe_deserialization(root, [root / "src/cache.py"])
+            self.assertEqual(finding.status, "fail")
+            self.assertIn("pickle.loads", finding.message)
+
+    def test_flags_yaml_load_without_safe_loader(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/config.py", "import yaml\nconfig = yaml.load(raw_config)\n")
+            finding = vibecheck.check_unsafe_deserialization(root, [root / "src/config.py"])
+            self.assertEqual(finding.status, "fail")
+            self.assertIn("yaml.load without SafeLoader", finding.message)
+
+    def test_ok_for_safe_yaml_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/config.py", "import yaml\nconfig = yaml.safe_load(raw_config)\n")
+            finding = vibecheck.check_unsafe_deserialization(root, [root / "src/config.py"])
+            self.assertEqual(finding.status, "ok")
+
+    def test_ok_for_yaml_load_with_safe_loader_after_nested_call(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write(root, "src/config.py", "import yaml\nconfig = yaml.load(stream.read(), Loader=yaml.SafeLoader)\n")
+            finding = vibecheck.check_unsafe_deserialization(root, [root / "src/config.py"])
+            self.assertEqual(finding.status, "ok")
+
+
 class RateLimitAndCorsTests(unittest.TestCase):
     def test_warns_on_server_without_rate_limit(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -11,6 +11,7 @@ Checks that find no relevant surface (e.g. no webhook handlers) report SKIP.
 
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -253,6 +254,108 @@ def check_sql_strings(root: Path, code_files: list[Path]) -> Finding:
     return Finding("sql-fstring", "P0", "ok", "no f-string SQL queries detected")
 
 
+def _is_safe_yaml_loader(node: ast.AST) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in {"SafeLoader", "CSafeLoader"}
+    if isinstance(node, ast.Attribute):
+        return node.attr in {"SafeLoader", "CSafeLoader"}
+    return False
+
+
+class _UnsafeDeserializationVisitor(ast.NodeVisitor):
+    def __init__(self) -> None:
+        self.pickle_modules = {"pickle"}
+        self.pickle_loaders: dict[str, str] = {}
+        self.yaml_modules = {"yaml"}
+        self.yaml_loaders: set[str] = set()
+        self.details: set[str] = set()
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            imported_as = alias.asname or alias.name
+            if alias.name == "pickle":
+                self.pickle_modules.add(imported_as)
+            elif alias.name == "yaml":
+                self.yaml_modules.add(imported_as)
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        if node.module == "pickle":
+            for alias in node.names:
+                if alias.name in {"load", "loads"}:
+                    self.pickle_loaders[alias.asname or alias.name] = alias.name
+        elif node.module == "yaml":
+            for alias in node.names:
+                if alias.name == "load":
+                    self.yaml_loaders.add(alias.asname or alias.name)
+        self.generic_visit(node)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if self._is_pickle_loader_call(node):
+            self.details.add(self._pickle_label(node))
+        elif self._is_unsafe_yaml_load_call(node):
+            self.details.add("yaml.load without SafeLoader")
+        self.generic_visit(node)
+
+    def _is_pickle_loader_call(self, node: ast.Call) -> bool:
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr in {"load", "loads"}:
+            return isinstance(func.value, ast.Name) and func.value.id in self.pickle_modules
+        return isinstance(func, ast.Name) and func.id in self.pickle_loaders
+
+    def _pickle_label(self, node: ast.Call) -> str:
+        func = node.func
+        if isinstance(func, ast.Attribute):
+            return f"pickle.{func.attr}"
+        if isinstance(func, ast.Name):
+            return f"pickle.{self.pickle_loaders[func.id]}"
+        return "pickle.load"
+
+    def _is_unsafe_yaml_load_call(self, node: ast.Call) -> bool:
+        func = node.func
+        is_yaml_load = False
+        if isinstance(func, ast.Attribute) and func.attr == "load":
+            is_yaml_load = isinstance(func.value, ast.Name) and func.value.id in self.yaml_modules
+        elif isinstance(func, ast.Name):
+            is_yaml_load = func.id in self.yaml_loaders
+        if not is_yaml_load:
+            return False
+        return not any(keyword.arg == "Loader" and _is_safe_yaml_loader(keyword.value) for keyword in node.keywords)
+
+
+def _unsafe_deserialization_details(text: str) -> set[str]:
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return set()
+    visitor = _UnsafeDeserializationVisitor()
+    visitor.visit(tree)
+    return visitor.details
+
+
+def check_unsafe_deserialization(root: Path, code_files: list[Path]) -> Finding:
+    offenders: list[str] = []
+    details: list[str] = []
+    for path in code_files:
+        if path.suffix.lower() != ".py":
+            continue
+        text = _read(path)
+        file_details = _unsafe_deserialization_details(text)
+        if file_details:
+            offenders.append(_rel(path, root))
+            details.extend(sorted(file_details))
+    if offenders:
+        return Finding(
+            "unsafe-deserialization",
+            "P0",
+            "fail",
+            f"unsafe deserialization in {len(offenders)} file(s): " + ", ".join(sorted(set(details))),
+            hint="Do not deserialize untrusted input with pickle or unsafe YAML loaders. Prefer JSON or yaml.safe_load.",
+            files=sorted(set(offenders)),
+        )
+    return Finding("unsafe-deserialization", "P0", "ok", "no unsafe Python deserialization detected")
+
+
 def check_debug_mode(root: Path, code_files: list[Path]) -> Finding:
     pattern = re.compile(r"^\s*DEBUG\s*=\s*True\b", re.MULTILINE)
     offenders = []
@@ -301,6 +404,7 @@ def run_vibecheck(root: Path) -> list[Finding]:
     findings.extend(check_webhooks(root, code_files))
     findings.append(check_password_reset(root, code_files))
     findings.append(check_sql_strings(root, code_files))
+    findings.append(check_unsafe_deserialization(root, code_files))
     findings.append(check_rate_limiting(root, code_files))
     findings.append(check_cors(root, code_files))
     findings.append(check_debug_mode(root, code_files))
