@@ -286,7 +286,7 @@ class _UnsafeDeserializationVisitor(ast.NodeVisitor):
                     self.pickle_loaders[alias.asname or alias.name] = alias.name
         elif node.module == "yaml":
             for alias in node.names:
-                if alias.name in {"load", "unsafe_load", "full_load"}:
+                if alias.name in {"load", "unsafe_load", "unsafe_load_all", "full_load", "full_load_all"}:
                     self.yaml_loaders[alias.asname or alias.name] = alias.name
         self.generic_visit(node)
 
@@ -316,7 +316,13 @@ class _UnsafeDeserializationVisitor(ast.NodeVisitor):
     def _unsafe_yaml_loader_label(self, node: ast.Call) -> str | None:
         func = node.func
         loader_name = None
-        if isinstance(func, ast.Attribute) and func.attr in {"load", "unsafe_load", "full_load"}:
+        if isinstance(func, ast.Attribute) and func.attr in {
+            "load",
+            "unsafe_load",
+            "unsafe_load_all",
+            "full_load",
+            "full_load_all",
+        }:
             if isinstance(func.value, ast.Name) and func.value.id in self.yaml_modules:
                 loader_name = func.attr
         elif isinstance(func, ast.Name):
