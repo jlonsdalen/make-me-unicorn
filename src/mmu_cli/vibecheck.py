@@ -267,7 +267,7 @@ class _UnsafeDeserializationVisitor(ast.NodeVisitor):
         self.pickle_modules = {"pickle"}
         self.pickle_loaders: dict[str, str] = {}
         self.yaml_modules = {"yaml"}
-        self.yaml_loaders: set[str] = set()
+        self.yaml_loaders: dict[str, str] = {}
         self.details: set[str] = set()
 
     def visit_Import(self, node: ast.Import) -> None:
@@ -286,15 +286,17 @@ class _UnsafeDeserializationVisitor(ast.NodeVisitor):
                     self.pickle_loaders[alias.asname or alias.name] = alias.name
         elif node.module == "yaml":
             for alias in node.names:
-                if alias.name == "load":
-                    self.yaml_loaders.add(alias.asname or alias.name)
+                if alias.name in {"load", "unsafe_load", "unsafe_load_all", "full_load", "full_load_all"}:
+                    self.yaml_loaders[alias.asname or alias.name] = alias.name
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
         if self._is_pickle_loader_call(node):
             self.details.add(self._pickle_label(node))
-        elif self._is_unsafe_yaml_load_call(node):
-            self.details.add("yaml.load without SafeLoader")
+        else:
+            yaml_label = self._unsafe_yaml_loader_label(node)
+            if yaml_label:
+                self.details.add(yaml_label)
         self.generic_visit(node)
 
     def _is_pickle_loader_call(self, node: ast.Call) -> bool:
@@ -311,16 +313,27 @@ class _UnsafeDeserializationVisitor(ast.NodeVisitor):
             return f"pickle.{self.pickle_loaders[func.id]}"
         return "pickle.load"
 
-    def _is_unsafe_yaml_load_call(self, node: ast.Call) -> bool:
+    def _unsafe_yaml_loader_label(self, node: ast.Call) -> str | None:
         func = node.func
-        is_yaml_load = False
-        if isinstance(func, ast.Attribute) and func.attr == "load":
-            is_yaml_load = isinstance(func.value, ast.Name) and func.value.id in self.yaml_modules
+        loader_name = None
+        if isinstance(func, ast.Attribute) and func.attr in {
+            "load",
+            "unsafe_load",
+            "unsafe_load_all",
+            "full_load",
+            "full_load_all",
+        }:
+            if isinstance(func.value, ast.Name) and func.value.id in self.yaml_modules:
+                loader_name = func.attr
         elif isinstance(func, ast.Name):
-            is_yaml_load = func.id in self.yaml_loaders
-        if not is_yaml_load:
-            return False
-        return not any(keyword.arg == "Loader" and _is_safe_yaml_loader(keyword.value) for keyword in node.keywords)
+            loader_name = self.yaml_loaders.get(func.id)
+        if loader_name is None:
+            return None
+        if loader_name != "load":
+            return f"yaml.{loader_name}"
+        if any(keyword.arg == "Loader" and _is_safe_yaml_loader(keyword.value) for keyword in node.keywords):
+            return None
+        return "yaml.load without SafeLoader"
 
 
 def _unsafe_deserialization_details(text: str) -> set[str]:
